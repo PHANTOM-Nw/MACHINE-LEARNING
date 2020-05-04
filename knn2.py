@@ -1,109 +1,41 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import math
-import operator
-'''
-instance1 : 28*28 1 d array
-instance2: 28*28 1 d array
-len: length of array i.e 28*28
-'''
-def euclidian_distance(instance1,instance2):
-    return math.sqrt(np.sum(np.square(instance1 - instance2)))
-'''
-Takes n-2D arrays of trainingData
-      test_labels per training_labels
-      trainingSample to be tested
-'''
-def getneighbours(trainingData,training_labels,testSample,k):
-    distances = []
-    neighbours = []
-    for index,trainingInstance in enumerate(trainingData):
-        #length = len(testInstance.flatten())
-        dist = euclidian_distance(trainingInstance,testSample)
-        distances.append((training_labels[index],dist))
-    distances.sort(key=operator.itemgetter(1))
-    for i in range(k):
-        neighbours.append(distances[i][0])
-    #print neighbours
-    return neighbours
-'''
-Takes neighbours and find who occur the most
-'''
-def getmostoccuringlabel(neighbours):
-    votes = {}
-    for neighbour in neighbours:
-        if neighbour in votes:
-            votes[neighbour] +=1
-        else:
-            votes[neighbour] =1
-    votes = sorted(votes.items(), key=operator.itemgetter(1), reverse=True)
-    return votes[0][0]
-'''
-Get the list of labels
-'''
-def label_list(filename):
-    fileObj = open(filename,'rb')
-    dataRead = fileObj.read()
-    dataReadFromB16 = dataRead[8:]
-    labels = np.frombuffer(dataReadFromB16, dtype=np.ubyte)
-    return labels
-
-'''
-Get the data matrix of the data to be either trained or tested
-'''
-def data_sorting(filename,size):
-    fileObj2 = open(filename, "rb")
-    dataRead = fileObj2.read()
-    dataReadFromB16 = dataRead[16:]
-    image1DArray = np.frombuffer(dataReadFromB16, dtype=np.ubyte)
-    matrix_2 = image1DArray.reshape((size * 28, 28))
-    matrix_3 = matrix_2.reshape((size, 28, 28))
-    matrix_3 = matrix_3 / 255.0 ##Noramlizing value to 0-1
-    return matrix_3
+import numpy as np  # 导入numpy工具包
+from os import listdir  # 使用listdir模块，用于访问本地文件
+from sklearn import neighbors
 
 
-if __name__ == "__main__":
+def img2vector(fileName):
+    retMat = np.zeros([1024], int)  # 定义返回的矩阵，大小为1*1024
+    fr = open(fileName)  # 打开包含32*32大小的数字文件
+    lines = fr.readlines()  # 读取文件的所有行
+    for i in range(32):  # 遍历文件所有行
+        for j in range(32):  # 并将01数字存放在retMat中
+            retMat[i * 32 + j] = lines[i][j]
+    return retMat
 
 
-    #read Train Label
+def readDataSet(path):
+    fileList = listdir(path)  # 获取文件夹下的所有文件
+    numFiles = len(fileList)  # 统计需要读取的文件的数目
+    dataSet = np.zeros([numFiles, 1024], int)  # 用于存放所有的数字文件
+    hwLabels = np.zeros([numFiles])  # 用于存放对应的标签(与神经网络的不同)
+    for i in range(numFiles):  # 遍历所有的文件
+        filePath = fileList[i]  # 获取文件名称/路径
+        digit = int(filePath.split('_')[0])  # 通过文件名获取标签
+        hwLabels[i] = digit  # 直接存放数字，并非one-hot向量
+        dataSet[i] = img2vector(path + '/' + filePath)  # 读取文件内容
+    return dataSet, hwLabels
 
-    train_x_file = "./train-images.idx3-ubyte"
-    train_matrix = data_sorting(train_x_file, 60000)
-    print (train_matrix.shape)
 
-    train_y_file = "./train-labels.idx1-ubyte"
-    train_label = label_list(train_y_file)
-    print(train_label.shape)
+# read dataSet
+train_dataSet, train_hwLabels = readDataSet('trainingDigits')
+knn = neighbors.KNeighborsClassifier(algorithm='kd_tree', n_neighbors=3)
+knn.fit(train_dataSet, train_hwLabels)
 
-    train_x_file = "./t10k-images.idx3-ubyte"
-    test_matrix = data_sorting(train_x_file, 10000)
-    print(test_matrix.shape)
+# read  testing dataSet
+dataSet, hwLabels = readDataSet('testDigits')
 
-    train_y_file = "./t10k-labels.idx1-ubyte"
-    test_label = label_list(train_y_file)
-    print(test_label.shape)
-    predictions =[]
-    k_values = [1, 3, 5, 10, 30, 50, 70, 80, 90, 100]
-    accuracy = [0.0]*len(k_values)
-    for ind,k in enumerate(k_values):
-        print ("For K: "+str(k))
-
-        total_count = len(test_matrix)
-        correct_count = 0
-        for x in range(len(test_matrix)):
-            neighbors = getneighbours(train_matrix, train_label, test_matrix[x], k)
-            result = getmostoccuringlabel(neighbors)
-            predictions.append(result)
-            #print (x)
-            #print('> predicted=' + repr(result) +', actual=' + repr(test_label[x]))
-            if result == test_label[x]:
-                correct_count +=1
-        accuracy[ind] =((float(correct_count)/total_count)*100.0)
-    print (k_values)
-    print (accuracy)
-    k_values = [1, 3, 5, 10, 30, 50, 70, 80, 90, 100]
-    #accuracy = [100, 10, 20, 10, 10, 29, 67, 56, 67, 19]
-    plt.plot(k_values, accuracy)
-    plt.ylabel('Accuracy')
-    plt.xlabel('k values')
-    plt.savefig('./KNN.png')
+res = knn.predict(dataSet)  # 对测试集进行预测
+error_num = np.sum(res != hwLabels)  # 统计分类错误的数目
+num = len(dataSet)  # 测试集的数目
+print("Total num:", num, " Wrong num:", \
+      error_num, "  WrongRate:", error_num / float(num))
